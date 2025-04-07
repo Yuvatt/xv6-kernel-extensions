@@ -89,3 +89,11 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+//This system call returns the size of the
+//running process’ memory in bytes.
+uint64
+sys_memsize(void)
+{
+  return myproc()->sz;
+}
