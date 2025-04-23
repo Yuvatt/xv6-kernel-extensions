@@ -131,3 +131,36 @@ sys_memsize(void)
 {
   return myproc()->sz;
 }
+
+
+uint64
+sys_forkn(void)
+{
+  int n;
+  uint64 pids_addr;
+
+  argint(0, &n);
+  argaddr(1, &pids_addr);
+
+  // Validate the user-space address
+  if (pids_addr == 0 || pids_addr >= myproc()->sz) {
+    printf("sys_forkn: Invalid pids_addr=%p\n", pids_addr);
+    return -1;
+  }
+
+  printf("sys_forkn: n=%d, pids_addr=%p\n", n, pids_addr);
+
+  return forkn(n, pids_addr);
+}
+
+uint64
+sys_waitall(void)
+{
+  uint64 n_addr, statuses_addr;
+
+  // Get the user-space addresses for n and statuses
+  argaddr(0, &n_addr);
+  argaddr(1, &statuses_addr);
+
+  return waitall(n_addr, statuses_addr);
+}

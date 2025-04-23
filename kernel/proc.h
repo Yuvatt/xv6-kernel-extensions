@@ -104,6 +104,9 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-
+  
   char exit_msg[32]; 
 };
+
+int forkn(int n, uint64 pids);
+int waitall(uint64 n, uint64 statuses);
