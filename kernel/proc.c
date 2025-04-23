@@ -344,9 +344,12 @@ reparent(struct proc *p)
 // An exited process remains in the zombie state
 // until its parent calls wait().
 void
-exit(int status)
+exit(int status, const char* msg)
 {
   struct proc *p = myproc();
+  // Save the exit message in the process control block (PCB)
+  safestrcpy(p->exit_msg, msg, sizeof(p->exit_msg));
+  p->xstate = status;
 
   if(p == initproc)
     panic("init exiting");
@@ -388,50 +391,40 @@ exit(int status)
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
 int
-wait(uint64 addr)
+wait(int* status, char* exit_msg)
 {
-  struct proc *pp;
-  int havekids, pid;
-  struct proc *p = myproc();
+    struct proc *p;
+    int havekids, pid;
+    struct proc *curproc = myproc();
 
-  acquire(&wait_lock);
+    acquire(&wait_lock);
+    for (;;) {
+        havekids = 0;
+        for (p = proc; p < &proc[NPROC]; p++) {
+            if (p->parent != curproc)
+                continue;
+            havekids = 1;
+            if (p->state == ZOMBIE) {
+                // Copy the exit status and message
+                if (status)
+                    *status = p->xstate;
+                if (exit_msg)
+                    safestrcpy(exit_msg, p->exit_msg, sizeof(p->exit_msg));
 
-  for(;;){
-    // Scan through table looking for exited children.
-    havekids = 0;
-    for(pp = proc; pp < &proc[NPROC]; pp++){
-      if(pp->parent == p){
-        // make sure the child isn't still in exit() or swtch().
-        acquire(&pp->lock);
+                pid = p->pid;
+                freeproc(p);
+                release(&wait_lock);
+                return pid;
+            }
+        }
 
-        havekids = 1;
-        if(pp->state == ZOMBIE){
-          // Found one.
-          pid = pp->pid;
-          if(addr != 0 && copyout(p->pagetable, addr, (char *)&pp->xstate,
-                                  sizeof(pp->xstate)) < 0) {
-            release(&pp->lock);
+        if (!havekids || killed(curproc)) {
             release(&wait_lock);
             return -1;
-          }
-          freeproc(pp);
-          release(&pp->lock);
-          release(&wait_lock);
-          return pid;
         }
-        release(&pp->lock);
-      }
-    }
 
-    // No point waiting if we don't have any children.
-    if(!havekids || killed(p)){
-      release(&wait_lock);
-      return -1;
+        sleep(curproc, &wait_lock);
     }
-    
-    // Wait for a child to exit.
-    sleep(p, &wait_lock);  //DOC: wait-sleep
-  }
 }
 
 // Per-CPU process scheduler.
