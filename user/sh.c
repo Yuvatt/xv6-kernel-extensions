@@ -1,6 +1,6 @@
 // Shell.
-
 #include "kernel/types.h"
+#include "kernel/stat.h"
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
@@ -65,51 +65,54 @@ runcmd(struct cmd *cmd)
   struct pipecmd *pcmd;
   struct redircmd *rcmd;
 
-  if(cmd == 0)
-    exit(1);
+  if (cmd == 0)
+    exit(1, "");
 
-  switch(cmd->type){
+  switch (cmd->type) {
   default:
     panic("runcmd");
 
   case EXEC:
-    ecmd = (struct execcmd*)cmd;
-    if(ecmd->argv[0] == 0)
-      exit(1);
+    ecmd = (struct execcmd *)cmd;
+    if (ecmd->argv[0] == 0)
+      exit(1, "");
     exec(ecmd->argv[0], ecmd->argv);
     fprintf(2, "exec %s failed\n", ecmd->argv[0]);
     break;
 
   case REDIR:
-    rcmd = (struct redircmd*)cmd;
+    rcmd = (struct redircmd *)cmd;
     close(rcmd->fd);
-    if(open(rcmd->file, rcmd->mode) < 0){
+    if (open(rcmd->file, rcmd->mode) < 0) {
       fprintf(2, "open %s failed\n", rcmd->file);
-      exit(1);
+      exit(1, "");
     }
     runcmd(rcmd->cmd);
     break;
 
   case LIST:
-    lcmd = (struct listcmd*)cmd;
-    if(fork1() == 0)
+    lcmd = (struct listcmd *)cmd;
+    if (fork1() == 0)
       runcmd(lcmd->left);
-    wait(0);
+    int status;
+    char exit_msg[32];
+    wait(&status, exit_msg); // Wait for the left command to finish
+    printf("Child exited with status %d and message: %s\n", status, exit_msg);
     runcmd(lcmd->right);
     break;
 
   case PIPE:
-    pcmd = (struct pipecmd*)cmd;
-    if(pipe(p) < 0)
+    pcmd = (struct pipecmd *)cmd;
+    if (pipe(p) < 0)
       panic("pipe");
-    if(fork1() == 0){
+    if (fork1() == 0) {
       close(1);
       dup(p[1]);
       close(p[0]);
       close(p[1]);
       runcmd(pcmd->left);
     }
-    if(fork1() == 0){
+    if (fork1() == 0) {
       close(0);
       dup(p[0]);
       close(p[0]);
@@ -118,17 +121,17 @@ runcmd(struct cmd *cmd)
     }
     close(p[0]);
     close(p[1]);
-    wait(0);
-    wait(0);
+    wait(0, 0); // Updated to match the new wait signature
+    wait(0, 0); // Updated to match the new wait signature
     break;
 
   case BACK:
-    bcmd = (struct backcmd*)cmd;
-    if(fork1() == 0)
+    bcmd = (struct backcmd *)cmd;
+    if (fork1() == 0)
       runcmd(bcmd->cmd);
     break;
   }
-  exit(0);
+  exit(0, "");
 }
 
 int
@@ -166,17 +169,23 @@ main(void)
       continue;
     }
     if(fork1() == 0)
-      runcmd(parsecmd(buf));
-    wait(0);
+    runcmd(parsecmd(buf));
+    int status;
+    char exit_msg[32];
+    if (wait(&status, exit_msg) >= 0) {
+      printf("Child exited with status %d and message: %s\n", status, exit_msg);
+    } else {
+      printf("wait failed\n");
+    }
   }
-  exit(0);
+  exit(0, "Shell exited");
 }
 
 void
 panic(char *s)
 {
   fprintf(2, "%s\n", s);
-  exit(1);
+  exit(1, "");
 }
 
 int

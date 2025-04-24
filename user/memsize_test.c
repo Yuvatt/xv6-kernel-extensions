@@ -9,7 +9,7 @@ int main() {
     char *allocated_memory = malloc(20 * 1024); // 20 KB
     if (allocated_memory == 0) {
         printf("Memory allocation failed\n");
-        exit(1);
+        exit(1, "");
     }
 
     // (c) Print memory size after allocation
@@ -21,5 +21,5 @@ int main() {
     // (e) Print memory size after releasing memory
     printf("Memory size after release: %d bytes\n", memsize());
 
-    exit(0);
+    exit(0, "");
 }

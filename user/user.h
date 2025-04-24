@@ -2,8 +2,9 @@ struct stat;
 
 // system calls
 int fork(void);
-int exit(int) __attribute__((noreturn));
-int wait(int*);
+int sys_exit(int, const char*) __attribute__((noreturn));
+int exit(int, const char*) __attribute__((noreturn)); // Two-argument exit
+int wait(int*, char*);
 int pipe(int*);
 int write(int, const void*, int);
 int read(int, void*, int);
@@ -23,6 +24,8 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int memsize(void);
+int forkn(int n, int *pids);
+int waitall(int *n, int *statuses);
 
 // ulib.c
 int stat(const char*, struct stat*);

@@ -11,7 +11,7 @@ _main()
 {
   extern int main();
   main();
-  exit(0);
+  exit(0, "");
 }
 
 char*
@@ -145,3 +145,5 @@ memcpy(void *dst, const void *src, uint n)
 {
   return memmove(dst, src, n);
 }
+
+

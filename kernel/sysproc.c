@@ -9,10 +9,25 @@
 uint64
 sys_exit(void)
 {
-  int n;
-  argint(0, &n);
-  exit(n);
-  return 0;  // not reached
+  int status;
+  char exit_msg[32];
+
+  // Get the status argument
+  argint(0, &status);
+
+  // Get the exit message from userspace
+  if (argstr(1, exit_msg, sizeof(exit_msg)) < 0){
+    printf("sys_exit: argstr failed\n");
+    return -1;
+  }
+
+  // Save the exit message in the PCB
+  struct proc *p = myproc();
+  safestrcpy(p->exit_msg, exit_msg, sizeof(p->exit_msg));
+
+  // Call the kernel's exit function
+  exit(status, exit_msg);
+  return 0; // Not reached
 }
 
 uint64
@@ -30,9 +45,28 @@ sys_fork(void)
 uint64
 sys_wait(void)
 {
-  uint64 p;
-  argaddr(0, &p);
-  return wait(p);
+  uint64 status_addr, msg_addr;
+
+  // Get the status pointer from userspace
+  argaddr(0, &status_addr);
+
+  // Get the exit message pointer from userspace
+  argaddr(1, &msg_addr);
+
+  // Call the kernel's wait function
+  int status;
+  char exit_msg[32];
+  int pid = wait(&status, exit_msg);
+
+  // Copy the status and exit message to userspace
+  if (pid >= 0) {
+      if (copyout(myproc()->pagetable, status_addr, (char *)&status, sizeof(status)) < 0)
+          return -1;
+      if (copyout(myproc()->pagetable, msg_addr, exit_msg, sizeof(exit_msg)) < 0)
+          return -1;
+  }
+
+  return pid;
 }
 
 uint64
@@ -96,4 +130,37 @@ uint64
 sys_memsize(void)
 {
   return myproc()->sz;
+}
+
+
+uint64
+sys_forkn(void)
+{
+  int n;
+  uint64 pids_addr;
+
+  argint(0, &n);
+  argaddr(1, &pids_addr);
+
+  // Validate the user-space address
+  if (pids_addr == 0 || pids_addr >= myproc()->sz) {
+    printf("sys_forkn: Invalid pids_addr=%p\n", pids_addr);
+    return -1;
+  }
+
+  printf("sys_forkn: n=%d, pids_addr=%p\n", n, pids_addr);
+
+  return forkn(n, pids_addr);
+}
+
+uint64
+sys_waitall(void)
+{
+  uint64 n_addr, statuses_addr;
+
+  // Get the user-space addresses for n and statuses
+  argaddr(0, &n_addr);
+  argaddr(1, &statuses_addr);
+
+  return waitall(n_addr, statuses_addr);
 }
