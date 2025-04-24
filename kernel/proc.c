@@ -683,83 +683,94 @@ forkn(int n, uint64 pids_addr)
   }
 
   struct proc *parent = myproc();
-  int pids[16]; // Temporary kernel-space array to store PIDs
+  struct proc *children[n]; // Array to store child process pointers
+  int pids[n]; // Temporary kernel-space array to store PIDs
   int created = 0; // Number of successfully created child processes
 
   for (int i = 0; i < n; i++) {
+    printf("Debug: Attempting to allocate child process %d\n", i);
     struct proc *child = allocproc(); // Allocate a new process
     if (child == 0) {
       // Allocation failed, clean up already created child processes
+      printf("Debug: allocproc failed for child %d\n", i);
       for (int j = 0; j < created; j++) {
-        kill(pids[j]); // Kill the child processes
+        acquire(&children[j]->lock);
+        freeproc(children[j]);
+        release(&children[j]->lock);
       }
       return -1; // Return failure
     }
 
-    printf("forkn: Acquired lock for child PID=%d\n", child->pid);
-
-
-    // At this point, allocproc has already acquired child->lock
-
-    // Copy the parent process's state to the child
-    child->parent = parent;
-    printf("something\n");
-
-    
-    if (child->trapframe == 0) {
-      printf("forkn: trapframe is NULL for child PID=%d\n", child->pid);
-      freeproc(child);
-      release(&child->lock);
-      return -1;
-    }
-    
-    *child->trapframe = *parent->trapframe; // Copy trapframe
-    child->pagetable = proc_pagetable(child); // Create a new page table
-    if (child->pagetable == 0) {
-      printf("forkn: pagetable is NULL for child PID=%d\n", child->pid);
-      freeproc(child);
-      release(&child->lock); // Release the lock before returning
-      for (int j = 0; j < created; j++) {
-        kill(pids[j]); // Kill the child processes
-      }
-      return -1; // Return failure
-    }
+    // Store the child process pointer
+    children[created] = child;
 
     // Copy the parent's memory to the child
     if (uvmcopy(parent->pagetable, child->pagetable, parent->sz) < 0) {
-      printf("forkn: uvmcopy failed for child PID=%d\n", child->pid);
+      printf("Debug: uvmcopy failed for child PID=%d\n", child->pid);
       freeproc(child);
-      release(&child->lock); // Release the lock before returning
+      release(&child->lock);
       for (int j = 0; j < created; j++) {
-        kill(pids[j]); // Kill the child processes
+        acquire(&children[j]->lock);
+        freeproc(children[j]);
+        release(&children[j]->lock);
       }
       return -1; // Return failure
     }
 
     child->sz = parent->sz;
-    child->trapframe->a0 = i + 1; // Set return value for the child (1-based index)
-    pids[created++] = child->pid; // Store the child's PID
 
-    // Set the child process to runnable only after all children are created
-    child->state = RUNNABLE;
+    // Copy the parent's trapframe to the child
+    *child->trapframe = *parent->trapframe;
+
+    // Set the return value for the child process
+    child->trapframe->a0 = i + 1;
+
+    // Increment reference counts on open file descriptors
+    for (int fd = 0; fd < NOFILE; fd++) {
+      if (parent->ofile[fd]) {
+        child->ofile[fd] = filedup(parent->ofile[fd]);
+      }
+    }
+    child->cwd = idup(parent->cwd);
+
+    // Copy the parent's name to the child
+    safestrcpy(child->name, parent->name, sizeof(child->name));
+
+    // Set the child's parent
+    acquire(&wait_lock);
+    child->parent = parent;
+    release(&wait_lock);
+
+    // Store the child's PID
+    pids[created++] = child->pid;
+
     release(&child->lock); // Release the lock for the child process
   }
 
-  printf("forkn: Copying PIDs to user-space address %p\n", pids_addr);
-
   // Copy the PIDs to the user-space array
+  printf("Debug: Copying PIDs to user-space address %p\n", pids_addr);
   if (copyout(parent->pagetable, pids_addr, (char *)pids, sizeof(int) * n) < 0) {
-    printf("forkn: copyout failed\n");
-    // If copyout fails, clean up already created child processes
+    printf("Debug: copyout failed\n");
+    // Cleanup already created child processes
     for (int j = 0; j < created; j++) {
-      kill(pids[j]);
+      acquire(&children[j]->lock);
+      freeproc(children[j]);
+      release(&children[j]->lock);
     }
     return -1; // Return failure
   }
 
-  return 0; // Success, return 0 in the parent process
-}
+  // Set all child processes to RUNNABLE
+  for (int i = 0; i < created; i++) {
+    acquire(&children[i]->lock);
+    children[i]->state = RUNNABLE;
+    release(&children[i]->lock);
+    printf("Debug: Child PID=%d set to RUNNABLE\n", children[i]->pid);
+  }
 
+  printf("Debug: Exiting forkn successfully\n");
+  return 0; // Success
+}
 
 int
 waitall(uint64 n_addr, uint64 statuses_addr)
