@@ -45,28 +45,15 @@ sys_fork(void)
 uint64
 sys_wait(void)
 {
-  uint64 status_addr, msg_addr;
+  uint64 status, exit_msg;
 
   // Get the status pointer from userspace
-  argaddr(0, &status_addr);
+  argaddr(0, &status);
 
   // Get the exit message pointer from userspace
-  argaddr(1, &msg_addr);
-
-  // Call the kernel's wait function
-  int status;
-  char exit_msg[32];
-  int pid = wait(&status, exit_msg);
-
-  // Copy the status and exit message to userspace
-  if (pid >= 0) {
-      if (copyout(myproc()->pagetable, status_addr, (char *)&status, sizeof(status)) < 0)
-          return -1;
-      if (copyout(myproc()->pagetable, msg_addr, exit_msg, sizeof(exit_msg)) < 0)
-          return -1;
-  }
-
-  return pid;
+  argaddr(1, &exit_msg);
+  
+  return wait(status, exit_msg);
 }
 
 uint64
@@ -141,14 +128,6 @@ sys_forkn(void)
 
   argint(0, &n);
   argaddr(1, &pids_addr);
-
-  // Validate the user-space address
-  if (pids_addr == 0 || pids_addr >= myproc()->sz) {
-    printf("sys_forkn: Invalid pids_addr=%p\n", pids_addr);
-    return -1;
-  }
-
-  printf("sys_forkn: n=%d, pids_addr=%p\n", n, pids_addr);
 
   return forkn(n, pids_addr);
 }

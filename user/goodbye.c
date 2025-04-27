@@ -3,5 +3,4 @@
 
 int main() {
     exit(0, "Goodbye World xv6");
-    return 0; // Not reached
 }

@@ -6,7 +6,7 @@ int main() {
     printf("Initial memory size: %d bytes\n", memsize());
 
     // (b) Allocate 20k more bytes of memory
-    char *allocated_memory = malloc(20 * 1024); // 20 KB
+    char *allocated_memory = malloc(20000); // 20 KB
     if (allocated_memory == 0) {
         printf("Memory allocation failed\n");
         exit(1, "");
